@@ -7,6 +7,7 @@ import android.view.animation.AnimationUtils
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.cardview.widget.CardView
 import kotlinx.coroutines.*
 
 @SuppressLint("CustomSplashScreen")
@@ -18,20 +19,21 @@ class SplashActivity : ComponentActivity() {
         setContentView(R.layout.splash_screen)
 
         // Find views
-        val logo = findViewById<ImageView>(R.id.splashLogo)
+        val logoContainer = findViewById<CardView>(R.id.logoContainer)
         val tagline = findViewById<TextView>(R.id.splashTagline)
 
         // Load animations
-        val fadeIn = AnimationUtils.loadAnimation(this, android.R.anim.fade_in)
-        fadeIn.duration = 1000
+        val scaleAndFadeIn = AnimationUtils.loadAnimation(this, R.anim.scale_and_fade_in)
+        val slideUpFadeIn = AnimationUtils.loadAnimation(this, R.anim.slide_up_fade_in)
 
-        // Apply animations
-        logo.startAnimation(fadeIn)
-        tagline.startAnimation(fadeIn)
-
-        // Start main activity after delay
+        // Apply animations with delay
         splashScope.launch {
-            delay(3000)
+            delay(300) // Short delay before starting animations
+            logoContainer.startAnimation(scaleAndFadeIn)
+            delay(500) // Delay before tagline animation
+            tagline.startAnimation(slideUpFadeIn)
+            
+            delay(2200) // Wait for animations to complete
             startActivity(Intent(this@SplashActivity, MainActivity::class.java))
             finish()
         }

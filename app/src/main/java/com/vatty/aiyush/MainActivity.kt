@@ -4,24 +4,29 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.View
-import android.webkit.WebChromeClient
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.webkit.*
 import android.widget.ProgressBar
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.WindowCompat
 import com.google.android.material.snackbar.Snackbar
+import kotlinx.coroutines.*
+import java.io.File
 
 class MainActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     private lateinit var rootLayout: ConstraintLayout
+    private val mainScope = MainScope()
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
+        
+        // Initialize cache directories
+        initializeCacheDirs()
         
         // Handle back press
         onBackPressedDispatcher.addCallback(this) {
@@ -32,6 +37,40 @@ class MainActivity : ComponentActivity() {
             }
         }
         
+        setupLayout()
+        setupWebView()
+        loadWebsite()
+    }
+
+    private fun initializeCacheDirs() {
+        // Create necessary cache directories
+        val webViewCacheDir = File(cacheDir, "WebView")
+        if (!webViewCacheDir.exists()) {
+            webViewCacheDir.mkdirs()
+        }
+        
+        val defaultCacheDir = File(webViewCacheDir, "Default")
+        if (!defaultCacheDir.exists()) {
+            defaultCacheDir.mkdirs()
+        }
+        
+        val httpCacheDir = File(defaultCacheDir, "HTTP Cache")
+        if (!httpCacheDir.exists()) {
+            httpCacheDir.mkdirs()
+        }
+        
+        val codeCacheDir = File(httpCacheDir, "Code Cache")
+        if (!codeCacheDir.exists()) {
+            codeCacheDir.mkdirs()
+        }
+        
+        // Create specific cache directories
+        listOf("js", "wasm").forEach { type ->
+            File(codeCacheDir, type).mkdirs()
+        }
+    }
+
+    private fun setupLayout() {
         // Create root layout
         rootLayout = ConstraintLayout(this).apply {
             layoutParams = ConstraintLayout.LayoutParams(
@@ -50,20 +89,36 @@ class MainActivity : ComponentActivity() {
             // Optimize WebView settings
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
             settings.apply {
+                // Enable JavaScript and DOM Storage
                 javaScriptEnabled = true
                 domStorageEnabled = true
+                
+                // Configure viewport
                 loadWithOverviewMode = true
                 useWideViewPort = true
+                
+                // Configure zoom
                 builtInZoomControls = true
                 displayZoomControls = false
-                // Enable hardware acceleration
-                setRenderPriority(WebSettings.RenderPriority.HIGH)
-                cacheMode = WebSettings.LOAD_DEFAULT
-                // Enable better web performance
+                
+                // Cache and storage configuration
+                cacheMode = WebSettings.LOAD_CACHE_ELSE_NETWORK
                 databaseEnabled = true
                 allowFileAccess = true
                 allowContentAccess = true
+                
+                // Media and content settings
                 loadsImagesAutomatically = true
+                mediaPlaybackRequiresUserGesture = false
+                mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                
+                // Performance optimizations
+                setRenderPriority(WebSettings.RenderPriority.HIGH)
+                setEnableSmoothTransition(true)
+                
+                // Security settings
+                setGeolocationEnabled(false)
+                javaScriptCanOpenWindowsAutomatically = false
             }
         }
 
@@ -83,20 +138,13 @@ class MainActivity : ComponentActivity() {
         rootLayout.addView(webView)
         rootLayout.addView(progressBar)
         setContentView(rootLayout)
-
-        setupWebView()
-        loadWebsite()
     }
 
     private fun setupWebView() {
         webView.webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 progressBar.progress = newProgress
-                if (newProgress == 100) {
-                    progressBar.visibility = View.GONE
-                } else {
-                    progressBar.visibility = View.VISIBLE
-                }
+                progressBar.visibility = if (newProgress < 100) View.VISIBLE else View.GONE
             }
         }
 
@@ -113,12 +161,31 @@ class MainActivity : ComponentActivity() {
 
             override fun onReceivedError(
                 view: WebView?,
-                errorCode: Int,
-                description: String?,
-                failingUrl: String?
+                request: WebResourceRequest?,
+                error: WebResourceError?
             ) {
-                super.onReceivedError(view, errorCode, description, failingUrl)
-                showError("Error: $description")
+                super.onReceivedError(view, request, error)
+                error?.description?.toString()?.let { showError("Error: $it") }
+            }
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): Boolean {
+                request?.url?.toString()?.let { url ->
+                    if (url.startsWith("http://") || url.startsWith("https://")) {
+                        return false
+                    }
+                }
+                return true
+            }
+
+            override fun shouldInterceptRequest(
+                view: WebView?,
+                request: WebResourceRequest?
+            ): WebResourceResponse? {
+                // Enable local caching for resources
+                return super.shouldInterceptRequest(view, request)
             }
         }
     }
@@ -138,7 +205,24 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        webView.destroy()
+        mainScope.cancel()
+        webView.apply {
+            stopLoading()
+            clearHistory()
+            clearFormData()
+            clearCache(true)
+            destroy()
+        }
         super.onDestroy()
+    }
+
+    override fun onPause() {
+        webView.onPause()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        webView.onResume()
+        super.onResume()
     }
 }

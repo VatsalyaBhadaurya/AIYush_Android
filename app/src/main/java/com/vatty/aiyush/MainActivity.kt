@@ -4,17 +4,26 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup.LayoutParams
 import android.webkit.*
 import android.widget.ProgressBar
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.*
 import java.io.File
 
 class MainActivity : ComponentActivity() {
+    companion object {
+        init {
+            WebView.setDataDirectorySuffix("webview_data")
+        }
+    }
+
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
     private lateinit var rootLayout: ConstraintLayout
@@ -24,6 +33,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         super.onCreate(savedInstanceState)
+        
+        if (savedInstanceState == null) {
+            WebView.enableSlowWholeDocumentDraw()
+        }
         
         // Initialize cache directories
         initializeCacheDirs()
@@ -40,6 +53,13 @@ class MainActivity : ComponentActivity() {
         setupLayout()
         setupWebView()
         loadWebsite()
+
+        // Handle window insets
+        ViewCompat.setOnApplyWindowInsetsListener(rootLayout) { view, windowInsets ->
+            val insets = windowInsets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(insets.left, insets.top, insets.right, insets.bottom)
+            windowInsets
+        }
     }
 
     private fun initializeCacheDirs() {
@@ -68,15 +88,19 @@ class MainActivity : ComponentActivity() {
         listOf("js", "wasm").forEach { type ->
             File(codeCacheDir, type).mkdirs()
         }
+
+        // Create variations directory
+        File(defaultCacheDir, "variations").mkdirs()
     }
 
     private fun setupLayout() {
         // Create root layout
         rootLayout = ConstraintLayout(this).apply {
-            layoutParams = ConstraintLayout.LayoutParams(
-                ConstraintLayout.LayoutParams.MATCH_PARENT,
-                ConstraintLayout.LayoutParams.MATCH_PARENT
+            layoutParams = LayoutParams(
+                LayoutParams.MATCH_PARENT,
+                LayoutParams.MATCH_PARENT
             )
+            fitsSystemWindows = true
         }
 
         // Create and setup WebView
@@ -84,7 +108,12 @@ class MainActivity : ComponentActivity() {
             layoutParams = ConstraintLayout.LayoutParams(
                 ConstraintLayout.LayoutParams.MATCH_PARENT,
                 ConstraintLayout.LayoutParams.MATCH_PARENT
-            )
+            ).apply {
+                topToTop = ConstraintLayout.LayoutParams.PARENT_ID
+                bottomToBottom = ConstraintLayout.LayoutParams.PARENT_ID
+                startToStart = ConstraintLayout.LayoutParams.PARENT_ID
+                endToEnd = ConstraintLayout.LayoutParams.PARENT_ID
+            }
             
             // Optimize WebView settings
             setLayerType(View.LAYER_TYPE_HARDWARE, null)
@@ -119,19 +148,31 @@ class MainActivity : ComponentActivity() {
                 // Security settings
                 setGeolocationEnabled(false)
                 javaScriptCanOpenWindowsAutomatically = false
+
+                // Additional UI settings
+                setSupportZoom(true)
+                textZoom = 100
             }
+
+            // Improve scrolling
+            overScrollMode = View.OVER_SCROLL_NEVER
+            scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
         }
 
         // Create and setup ProgressBar
         progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             layoutParams = ConstraintLayout.LayoutParams(
                 ConstraintLayout.LayoutParams.MATCH_PARENT,
-                10
+                8
             ).apply {
                 topToTop = ConstraintLayout.LayoutParams.PARENT_ID
             }
             max = 100
             progress = 0
+            progressDrawable?.setColorFilter(
+                getColor(android.R.color.holo_blue_bright),
+                android.graphics.PorterDuff.Mode.SRC_IN
+            )
         }
 
         // Add views to root layout
@@ -192,7 +233,7 @@ class MainActivity : ComponentActivity() {
 
     private fun loadWebsite() {
         try {
-            webView.loadUrl("http://aiyush.s3-website-us-east-1.amazonaws.com")
+            webView.loadUrl("https://hack-gamma-two.vercel.app/")
         } catch (e: Exception) {
             showError("Failed to load website: ${e.message}")
         }
